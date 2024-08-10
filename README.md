@@ -1,171 +1,140 @@
 # Raft
-This Project focuses on implementing a modified Raft system with the leader lease modification similar to those used by geo-distributed Database clusters such as [CockroachDB](https://www.cockroachlabs.com/) or [YugabyteDB](https://www.yugabyte.com/). 
+
+This project focuses on implementing a modified Raft system with the leader lease modification, similar to those used by geo-distributed database clusters such as [CockroachDB](https://www.cockroachlabs.com/) or [YugabyteDB](https://www.yugabyte.com/).
 
 Raft is a consensus algorithm designed for distributed systems to ensure fault tolerance and consistency. It operates through leader election, log replication, and commitment of entries across a cluster of nodes. The aim is to build a database that stores key-value pairs mapping string (key) to string (value).
 
-<!-- BUILT WITH -->
+## Table of Contents
+
+- [About The Project](#about-the-project)
+  - [Built With](#built-with)
+- [Documentation](#documentation)
+  - [Storage and Database Options](#storage-and-database-options)
+  - [Client Interaction](#client-interaction)
+  - [RPC and Protobuf](#rpc-and-protobuf)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+- [Deployment](#deployment)
+  - [Remote Deployment](#remote-deployment)
+  - [Local Deployment](#local-deployment)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Acknowledgements](#acknowledgements)
+
+## About The Project
+
+This project implements a distributed key-value store using the Raft consensus algorithm with leader lease modifications to optimize read performance in geo-distributed environments.
+
 ### Built With
-* [Python](https://www.python.org/)
-* [gRPC](https://grpc.io/)
-* [Google Cloud](https://cloud.google.com/)
 
-<!-- TABLE OF CONTENTS -->
-### Table of Contents
-<details open="open">
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li><a href="#documentation">Documentation</a></li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-      </ul>
-    </li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#acknowledgements">Acknowledgements</a></li>
-  </ol>
-</details>
+- [Python](https://www.python.org/)
+- [gRPC](https://grpc.io/)
+- [Google Cloud](https://cloud.google.com/)
 
-<!-- DOCUMENTATION -->
 ## Documentation
+
 ### Storage and Database Options
 
-The Raft Nodes serve the client for storing and retrieving these key-value pairs and replicating this data among other nodes in a fault-tolerant manner.
+The Raft nodes serve the client for storing and retrieving key-value pairs and replicating this data across nodes to ensure fault tolerance.
 
-* The nodes are persistent, i.e., even after stopping the node, the data (logs) are stored locally (in human-readable format, .txt) along with other important metadata (commitLength, Term, and NodeID which the current node voted for in this term) and retrieved when the node starts again.
-
-* #### Top level directory layout:
-        .Raft/
-        ├── Client
-        |   ├── client.py
-        |   ├── electio.proto
-        ├── Node1               # Node initalized with id 1
-        |   ├── dump
-        |   ├── logs
-        |   ├── node.py
-        |   ├── metadata
-        |   ├── electio.proto
-        ├── Node2               # Node initalized with id 2
-        |   ├── dump
-        |   ├── logs
-        |   ├── node.py
-        |   ├── metadata
-        |   ├── electio.proto
-
-* #### logs
-        NO-OP 0
-        SET name1 Ram 0 [SET {key} {value} {term}]
-        SET name2 Sham 0
-        SET name3 Dham 1
-
-* #### dump
-        Vote granted for Node 4 in term 1.
-        Node 1 accepted AppendEntries RPC from 4.
-        Node 1 accepted AppendEntries RPC from 4.
-        Node 1 accepted AppendEntries RPC from 4.
-        Node 1 (follower) committed the entry NO-OP 1 to the state machine.
-        Node 1 accepted AppendEntries RPC from 4.
-        Node 1 accepted AppendEntries RPC from 4.
-        Node 1 accepted AppendEntries RPC from 4.
-
-* #### Operations supported:
-
-        SET K V: Maps the key K to value V; for example, {SET x hello}. (WRITE OPERATION)
-        GET K: Returns the latest committed value of key K.
-
-        * If K doesn’t exist in the database, an empty string will be returned as value by default. (READ OPERATION)
+- **Persistence:** Logs and metadata are stored persistently in human-readable formats (`.txt` files) and are retrieved when the node restarts.
+- **Directory Structure:** 
+  - Each node has its own directory for storing logs, metadata, and a dump file, such as:
+    ```
+    logs_node_1/
+    ├── logs.txt
+    ├── metadata.txt
+    ├── dump.txt
+    ```
+- **Supported Operations:**
+  - `SET K V`: Maps the key `K` to value `V`.
+  - `GET K`: Returns the latest committed value of key `K`.
 
 ### Client Interaction
 
-Followers, candidates, and a leader form a Raft cluster serving Raft clients. A Raft client implements the following functionality:
-
-#### Leader Information:
-
-* The client stores the IP addresses and ports of all the nodes. 
-* The client stores the current leader ID, although this information might get outdated.
-
-#### Request Server:
-* It sends a GET/SET request to the leader node. (Refer to the Storage and Database Operations section)
-    
-    * In case of a failure, it updates its leader ID and resends the request to the updated leader.
-
-        * The node returns what it thinks is the current leader and a failure message
-        
-        * If there is no leader in the system, then the node will return NULL for the current leader and a failure message
-
-* The client continues sending the request until it receives a SUCCESS reply from any node.
-
-Refer to the following RPC & Protobuf for the client and node details:
+The Raft cluster serves clients by processing their `SET` and `GET` requests through the leader node. If a request fails, the client updates its leader information and retries.
 
 ### RPC and Protobuf
 
-Communication between nodes/servers requires two RPCs (AppendEntry and RequestVote). These RPCs have been explained in further detail in the [original Raft paper](https://www.google.com/url?q=https://raft.github.io/raft.pdf&sa=D&source=editors&ust=1718361831369760&usg=AOvVaw2RuIcsCKRsBApwxiYKKOrH):
+The project uses gRPC for communication between nodes and between the client and nodes. The primary RPCs implemented are `AppendEntry` and `RequestVote`, modified to include leader lease duration for optimizing reads.
 
-These RPCs are modified as follows for leader lease:
-
-* The AppendEntry RPC now also send the lease interval duration whenever the leader starts the lease timer.
-* Through the RequestVoteReply RPC, the voters now also propagate the longest remaining duration time of an old leader’s lease (known to that voter) to the new candidate it is voting for.
-
-
-![image](https://github.com/user-attachments/assets/efa1feb6-6a22-44f4-9290-eedc02c8f40f)
-
-
-For any other requirements refer [Documentation](https://github.com/Talkative-Banana/Raft/logo/Document.html)
-
-<!-- GETTING-STARTED -->
 ## Getting Started
-To get a local copy up and running follow these simple steps.
 
-<!-- PREREQUISITES -->
 ### Prerequisites
-* Basic understanding of Python (Tutorials: [English](https://youtu.be/_uQrJ0TkZlc) | [Hindi](https://youtu.be/gfDE2a7MKjA))
-* Python installed on your computer ([Download from Here](https://www.python.org/downloads/))
-* GitHub Account ([Sign Up](https://github.com/))
-* gRPC ([Download from here](https://grpc.io/))
 
+- Python ([Download](https://www.python.org/downloads/))
+- gRPC ([Installation Guide](https://grpc.io/docs/languages/python/quickstart/))
 
-For MacOS or Windows you need to either run each node and client manually or change the build file to run all of them locally.
+### Installation
 
-<!-- DEPLOYMENT -->
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/your-repo/Raft.git
+2. Navigate to the project directory:
+   ```sh
+   cd Raft
+3. Install the required dependencies:
+   ```sh
+   pip install -r requirements.txt
+
 ## Deployment
+
 ### Remote Deployment
 
-* Set up google cloud or docker containers and update the firewall settings to accept and send remote request.
+To deploy the Raft cluster on Google Cloud or Docker containers:
 
-* **node.py** and **client.py** have a static dictionary storing IP-address and IP port of all of different nodes which needs to be manually updated for gRPC communication. In case of local deployment all of the ip address are set to localhost.
+1. Set up the necessary virtual machines or containers on Google Cloud.
 
-* Grant permission to sh file and run it with required parameters.
+2. Update the IP addresses and ports in node.py and client.py to reflect the correct networking configuration for remote deployment.
+
+3. Grant execution permissions to the deployment script and run it:
+   ```sh
+   chmod +x scripts/deploy_remote.sh
+   ./scripts/deploy_remote.sh
 
 ### Local Deployment
 
-* Simply grant permission to sh file and run it with required parameters.
+For local deployment on your machine:
 
-<!-- ROADMAP -->
+1. Ensure all the nodes and the client are configured with localhost IP addresses.
+
+2. Grant execution permissions to the local deployment script and run it:
+   ```sh
+   chmod +x scripts/deploy_local.sh
+   ./scripts/deploy_local.sh
+
 ## Roadmap
-- Clone the repo and open it in suitable IDE for complete project source code. You can also fix the issues and hence contribute.
+ * Implement basic Raft algorithm
+ 
+ * Add leader lease modification for optimized read performance
+ 
+ * Implement dynamic cluster management (adding/removing nodes)
+ 
+ * Improve fault tolerance mechanisms
+ 
+ * Comprehensive testing and benchmarking
 
-
-<!-- CONTRIBUTING -->
 ## Contributing
-Contributions make the open-source community such an amazing place to learn, inspire, and create. I would greatly appreciate any contributions you make.
+
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are greatly appreciated.
+
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement". Don't forget to give the project a star! Thanks again!
 
 1. Fork the Project
-2. Create your Feature Branch
-3. Commit your Changes
-4. Push to the Branch
+
+2. Create your Feature Branch (git checkout -b feature/AmazingFeature)
+
+3. Commit your Changes (git commit -m 'Add some AmazingFeature')
+
+4. Push to the Branch (git push origin feature/AmazingFeature)
+
 5. Open a Pull Request
-   
-<!-- ACKNOWLEDGEMENTS -->
+
 ## Acknowledgements
-Aryan Rohilla aryan21024@iiitd.ac.in
 
-Ankit Kumar ankit21015@iiitd.ac.in
+* Aryan Rohilla - aryan21024@iiitd.ac.in
 
-Dharani Kumar S dharani21039@iiitd.ac.in
+* Ankit Kumar - ankit21015@iiitd.ac.in
+
+* Dharani Kumar S - dharani21039@iiitd.ac.in
